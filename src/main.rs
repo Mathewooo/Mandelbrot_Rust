@@ -1,12 +1,12 @@
 use std::env;
 use std::fs::File;
 use std::io::BufWriter;
+use rayon::prelude::*;
 
 use num_complex::Complex;
 
 use mandelbrot::mandelbrot::in_set;
-use parse::parse::parse_complex;
-use parse::parse::parse_pair;
+use parse::parse::*;
 
 mod parse;
 mod mandelbrot;
@@ -95,27 +95,24 @@ fn parallel_render(pixels: &mut [u8],
                    upper_left: Complex<f64>,
                    lower_right: Complex<f64>,
 ) {
-    let threads: usize = 16;
-    let rows_per_band = bounds.1 / threads;
-    let bands: Vec<&mut [u8]> =
-        pixels.chunks_mut(rows_per_band * bounds.0).collect();
+    let bands: Vec<(usize, &mut [u8])> = pixels
+        .chunks_mut(bounds.0)
+        .enumerate()
+        .collect();
 
-    crossbeam::scope(|spawner| {
-        for (i, band) in bands.into_iter().enumerate() {
-            let top = rows_per_band * i;
-            let height = band.len() / bounds.0;
-            let band_bounds = (bounds.0, height);
-            let band_upper_left =
-                pixel_to_point(bounds, (0, top), upper_left, lower_right);
-            let band_lower_right =
-                pixel_to_point(bounds, (bounds.0, top + height),
-                               upper_left, lower_right);
-            spawner.spawn(move |_| {
-                render(
-                    band, band_bounds,
-                    band_upper_left, band_lower_right
-                );
-            });
-        }
-    }).unwrap();
+    bands.into_par_iter()
+        .for_each(|(i, band)| {
+        let top = i;
+        let band_bounds = (bounds.0, 1);
+        let band_upper_left = pixel_to_point(
+            bounds, (0, top), upper_left, lower_right
+        );
+        let band_lower_right = pixel_to_point(
+            bounds, (bounds.0, top + 1), upper_left, lower_right
+        );
+        render(
+            band, band_bounds,
+            band_upper_left, band_lower_right
+        );
+    });
 }
